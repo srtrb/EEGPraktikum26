@@ -1,5 +1,6 @@
 %% EEG PREPROCESSING PIPELINE
 %{
+-----------------------------------------------------------------------------------------------
 Enter your project root ('data') and the spm path in the Set path part -> XXX !
 
 Project folder strcuture should look like this:
@@ -19,8 +20,8 @@ Project folder strcuture should look like this:
         05Anat
 
 When asked to enter channels for interpolation, enter: {'P5', 'P10'}
+------------------------------------------------------------------------------------------------
 %}
-
 clear; clc; 
 
 % Set path
@@ -30,6 +31,151 @@ addpath(spm_path);
 spm('defaults', 'EEG');
 addpath(fullfile(spm_path, 'external', 'fieldtrip'));
 cd(project_root);
+
+%% 0. Function for interpolating bad channels
+
+function D2 = spm_interpolate_bad_channels(D)
+% SPM_INTERPOLATE_BAD_CHANNELS - Load SPM EEG file, let user mark bad channels,
+% interpolate them using spline (uses embedded sensors location in meeg file), and save the updated data.
+%
+% Inputs:
+%   D    - meeg file loaded in workspace
+% Outputs:
+%   D    - meeg file with specified channels interpolated (also saved on
+%   disk in same folder as loaded D file with prefix "interpolate_"
+
+    data = spm2fieldtrip(D);
+
+    cfg = [];
+    cfg.length = 10;
+    cfg.overlap = 0;
+    %data_epoched = ft_redefinetrial(cfg, data);
+    data_epoched = data;
+    cfg = [];
+    cfg.preproc.demean = 'yes';
+    cfg.preproc.lpfilter = 'yes'; 
+    cfg.preproc.lpfreq = 45; 
+    cfg.preproc.hpfilter = 'yes'; 
+    cfg.preproc.hpfreq = 1; 
+    cfg.preproc.hpinstabilityfix = 'reduce'; 
+    cfg.ylim = [-20 20];
+    % ft_databrowser(cfg, data_epoched);
+    if isfield(cfg,'colormap')
+        cfg = rmfield(cfg,'colormap');
+    end  % optional safety
+    % ft_databrowser(cfg, data_epoched);  % COMMENT OUT
+
+    % Let user input bad channels
+    disp('Channel labels:');
+    bad_labels = input('Enter bad channels as a cell array (e.g. {''F3'', ''T7''}): ');
+
+    for i =1:length(bad_labels)
+        if any(strcmp(bad_labels{i}, data.label)) == 0
+            error(sprintf('The typed channel: %s do not exist', bad_labels{i}))
+        end
+    end
+
+    if length(bad_labels) > 0
+        cfg               = [];
+        cfg.method = 'spline';
+        cfg.badchannel    = bad_labels;
+        %cfg.neighbours = neighbours;
+        data_corr = ft_channelrepair(cfg, data);
+       
+    else
+        data_corr = data;
+    end
+
+   
+    D2 = D.copy(['interpolate_' fname(D)]);
+
+    %check that dimension match
+    if numel(indchantype(D, 'EEG')) == numel(data_corr.label)
+        D2(indchantype(D,'EEG'),:) = data_corr.trial{1,1};
+        D2 = D.copy(['interpolate_' fname(D)]);
+        D2.save();
+    else
+        error('something went wrong with channel indices')
+    end
+    
+    fprintf('Done. Saved interpolated data as: %s\n', fullfile(D2.path, [D2.fname]));
+end
+
+%% 0. Function for classifying trials
+
+function [new_trl, new_conditionlabels] = classify_roving_trials(trl, conditionlabels)
+% CLASSIFY_ROVING_TRIALS
+%
+% Classifies trials from a roving oddball paradigm into:
+%   - standard_low
+%   - standard_high
+%   - deviant_low
+%   - deviant_high
+%
+% Only the LAST standard before each intensity change is kept.
+%
+% INPUTS
+%   trl               Trial matrix returned by spm_eeg_definetrial
+%   conditionlabels   Cell array returned by spm_eeg_definetrial
+%
+% OUTPUTS
+%   new_trl
+%   new_conditionlabels
+
+% Convert condition labels to numeric values
+values = zeros(length(conditionlabels),1);
+
+values(strcmp(conditionlabels,'low_intensity'))  = 1;
+values(strcmp(conditionlabels,'high_intensity')) = 2;
+
+% Find deviants and last standards
+n = length(values);
+
+isDeviant = false(n,1);
+isLastStandard = false(n,1);
+
+% Deviant = first trial after a change
+isDeviant(2:end) = diff(values) ~= 0;
+
+% Last standard = trial immediately before a change
+isLastStandard(1:end-1) = diff(values) ~= 0;
+
+% Keep only deviants and last standards
+keep = isDeviant | isLastStandard;
+
+new_trl = trl(keep,:);
+
+% Create new condition labels
+new_conditionlabels = cell(sum(keep),1);
+
+k = 1;
+
+for i = 1:n
+
+    if isDeviant(i)
+
+        if values(i)==1
+            new_conditionlabels{k} = 'deviant_low';
+        else
+            new_conditionlabels{k} = 'deviant_high';
+        end
+        k = k + 1;
+
+    elseif isLastStandard(i)
+
+        if values(i)==1
+            new_conditionlabels{k} = 'standard_low';
+        else
+            new_conditionlabels{k} = 'standard_high';
+        end
+        k = k + 1;
+
+    end
+
+end
+
+end
+
 
 %% 1. Continuous preprocessing
 
