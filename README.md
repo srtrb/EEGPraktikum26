@@ -1,16 +1,16 @@
 ## Preprocessing:
 Download all 4 preprocessing files:  EEGproject_preprocessing.m , avref.eog.mat , channelselection.mat , trialdef.mat
 Make sure your folder structure looks like this:  
- data <br/>  
-        00Behavioural <br/>  
+ data /  
+        00Behavioural /  
             images  
             logs  
-            neuronavigation <br/>  
+            neuronavigation /  
                 Gian_ID04.sfp  
-        01EEG <br/>  
-            raw <br/>  
+        01EEG /  
+            raw /  
                 SPNCartoons_ID04.bdf  
-            spm <br/>  
+            spm /  
                 channelselection.mat  
                 avref_eog.mat  
                 trialdef.mat  
