@@ -30,7 +30,6 @@ Condition = categorical(Condition);
 Repeat = zeros(nTrials,1);
 
 previous_condition = '';
-
 counter = 0;
 
 for t = 1:nTrials
