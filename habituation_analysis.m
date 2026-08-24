@@ -1,172 +1,215 @@
-clear; clc;
+%% HABITUATION ANALYSIS
+% Trial-level, before averaging
+% ROI: Fz + Cz + Pz
 
-%% Load trial-level dataset
+clearvars -except D
+clc
+
+%% ---------------------------------------------------------
+% DATASET
+%% ---------------------------------------------------------
+
 D = spm_eeg_load('barovingcorr2fMinterpolate_dfcspmeeg_SPNCartoons_ID04.mat');
 
 nTrials = D.ntrials;
+
 fprintf('Number of trials: %d\n\n', nTrials);
 
-%% Conditions
-% Keep original condition labels from the trial-level dataset
-conditionlabels = D.conditions;
+%% ---------------------------------------------------------
+% ELECTRODES
+%% ---------------------------------------------------------
 
-% Convert to Low / High
-Condition = cell(nTrials,1);
+roi_labels = {'Fz','Cz','Pz'};
+roi_channels = zeros(1,3);
 
-for t = 1:nTrials
-    if contains(conditionlabels{t}, 'low', 'IgnoreCase', true)
-        Condition{t} = 'Low';
-    elseif contains(conditionlabels{t}, 'high', 'IgnoreCase', true)
-        Condition{t} = 'High';
-    else
-        error('Unknown condition at trial %d: %s', t, conditionlabels{t});
-    end
-end
-
-Condition = categorical(Condition);
-
-%% Repetition position
-% Repetition is calculated separately within each condition.
-Repeat = zeros(nTrials,1);
-
-previous_condition = '';
-counter = 0;
-
-for t = 1:nTrials
-
-    current_condition = Condition(t);
-
-    if t == 1 || ~strcmp(char(current_condition), previous_condition)
-
-        counter = 1;
-
-    else
-
-        counter = counter + 1;
-
-    end
-
-    Repeat(t) = counter;
-
-    previous_condition = char(current_condition);
-
-end
-
-%% ROI definition
-% Single midline ROI
-ROI_channels = {'Fz','Cz','Pz'};
-
-chan_idx = find(ismember(strtrim(D.chanlabels), ROI_channels));
-
-if length(chan_idx) ~= 3
-    error('Could not find all three ROI electrodes.');
+for i = 1:3
+    roi_channels(i) = D.indchannel(roi_labels{i});
 end
 
 fprintf('ROI: Fz + Cz + Pz\n');
-
-for i = 1:length(chan_idx)
+for i = 1:3
     fprintf('  %s -> channel %d\n', ...
-        ROI_channels{i}, chan_idx(i));
+        roi_labels{i}, roi_channels(i));
 end
 
-%% Time windows
-time_windows = [
-    0.100 0.200
-    0.200 0.350
-    0.350 0.600
-];
+%% ---------------------------------------------------------
+% CONDITIONS -> LOW / HIGH
+%% ---------------------------------------------------------
 
-win_names = {
-    'Early'
-    'Attentional'
-    'P300'
+conditions = D.conditions;
+
+Condition = strings(nTrials,1);
+
+for t = 1:nTrials
+
+    cond = lower(string(conditions{t}));
+
+    if contains(cond,'low')
+        Condition(t) = "Low";
+    elseif contains(cond,'high')
+        Condition(t) = "High";
+    else
+        Condition(t) = missing;
+    end
+end
+
+%% ---------------------------------------------------------
+% REPETITION POSITION
+% Number of consecutive previous trials with same condition
+%% ---------------------------------------------------------
+
+Repeat = nan(nTrials,1);
+
+current_repeat = 0;
+previous_condition = "";
+
+for t = 1:nTrials
+
+    if ismissing(Condition(t))
+        current_repeat = 0;
+        previous_condition = "";
+        continue
+    end
+
+    if Condition(t) == previous_condition
+        current_repeat = current_repeat + 1;
+    else
+        current_repeat = 1;
+    end
+
+    Repeat(t) = current_repeat;
+
+    previous_condition = Condition(t);
+end
+
+%% ---------------------------------------------------------
+% TIME WINDOWS
+%% ---------------------------------------------------------
+
+windows = {
+    'Early',       [100 200];
+    'Attentional', [200 350];
+    'P300',        [350 600]
 };
 
-%% Main analysis
+%% ---------------------------------------------------------
+% ANALYSIS
+%% ---------------------------------------------------------
 
-for w = 1:3
+for w = 1:size(windows,1)
 
-    fprintf('\n\n=============================================\n');
-    fprintf('%s: %.0f-%.0f ms\n', ...
-        win_names{w}, ...
-        time_windows(w,1)*1000, ...
-        time_windows(w,2)*1000);
+    win_name = windows{w,1};
+    timewin  = windows{w,2};
+
+    fprintf('\n');
+    fprintf('=============================================\n');
+    fprintf('%s: %d-%d ms\n', ...
+        win_name, timewin(1), timewin(2));
     fprintf('=============================================\n');
 
-    %% Time window indices
-    erp_idx = find( ...
-        D.time >= time_windows(w,1) & ...
-        D.time <= time_windows(w,2));
+    % Find samples using D.time
+    time_idx = find(D.time >= timewin(1)/1000 & ...
+                    D.time <= timewin(2)/1000);
 
-    %% Calculate ROI amplitude for every trial
-    %
-    % First average over time,
-    % then average Fz/Cz/Pz.
-    %
-    ROI_amplitude = zeros(nTrials,1);
+    if isempty(time_idx)
+        fprintf('No samples found for this window.\n');
+        continue
+    end
+
+    %% -----------------------------------------------------
+    % Extract amplitude
+    %% -----------------------------------------------------
+
+    Y = nan(nTrials,1);
 
     for t = 1:nTrials
 
-        trial_data = D(chan_idx, erp_idx, t);
+        if ismissing(Condition(t))
+            continue
+        end
 
-        % Mean over time
-        electrode_amplitudes = mean(trial_data, 2);
+        % ROI x time
+        x = D(roi_channels,time_idx,t);
 
-        % Mean across Fz, Cz, Pz
-        ROI_amplitude(t) = mean(electrode_amplitudes);
-
+        % Mean across electrodes and time
+        Y(t) = mean(x(:),'omitnan');
     end
 
-    %% Create analysis table
-    T = table( ...
-        ROI_amplitude, ...
-        Repeat, ...
-        Condition, ...
-        (1:nTrials)', ...
-        'VariableNames', ...
-        {'Amp','Repeat','Condition','Trial'});
+    %% -----------------------------------------------------
+    % LOW
+    %% -----------------------------------------------------
 
-    %% -----------------------------------------
-    % LOW habituation
-    % ------------------------------------------
+    idx = Condition == "Low" & ~isnan(Y) & ~isnan(Repeat);
+
+    T_low = table( ...
+        Y(idx), ...
+        Repeat(idx), ...
+        'VariableNames', {'Amplitude','Repeat'});
+
     fprintf('\n>>> LOW habituation\n\n');
 
-    T_low = T(T.Condition == 'Low', :);
+    if numel(unique(T_low.Repeat)) < 2
 
-    LME_Low = fitlme( ...
-        T_low, ...
-        'Amp ~ Repeat + (1|Trial)');
+        fprintf('Not enough repetition variation.\n');
 
-    disp(LME_Low.Coefficients);
+    else
 
-    %% -----------------------------------------
-    % HIGH habituation
-    % ------------------------------------------
+        lme_low = fitlme( ...
+            T_low, ...
+            'Amplitude ~ Repeat');
+
+        disp(lme_low.Coefficients);
+    end
+
+    %% -----------------------------------------------------
+    % HIGH
+    %% -----------------------------------------------------
+
+    idx = Condition == "High" & ~isnan(Y) & ~isnan(Repeat);
+
+    T_high = table( ...
+        Y(idx), ...
+        Repeat(idx), ...
+        'VariableNames', {'Amplitude','Repeat'});
+
     fprintf('\n>>> HIGH habituation\n\n');
 
-    T_high = T(T.Condition == 'High', :);
+    if numel(unique(T_high.Repeat)) < 2
 
-    LME_High = fitlme( ...
-        T_high, ...
-        'Amp ~ Repeat + (1|Trial)');
+        fprintf('Not enough repetition variation.\n');
 
-    disp(LME_High.Coefficients);
+    else
 
-    %% -----------------------------------------
-    % LOW vs HIGH comparison
-    % ------------------------------------------
+        lme_high = fitlme( ...
+            T_high, ...
+            'Amplitude ~ Repeat');
+
+        disp(lme_high.Coefficients);
+    end
+
+    %% -----------------------------------------------------
+    % LOW vs HIGH
+    %% -----------------------------------------------------
+
+    idx = ~isnan(Y) & ~ismissing(Condition);
+
+    T = table( ...
+        Y(idx), ...
+        categorical(Condition(idx)), ...
+        'VariableNames', {'Amplitude','Condition'});
+
     fprintf('\n>>> LOW vs HIGH comparison\n\n');
 
-    LME_Condition = fitlme( ...
+    lme_condition = fitlme( ...
         T, ...
-        'Amp ~ Condition + (1|Trial)');
+        'Amplitude ~ Condition');
 
-    disp(LME_Condition.Coefficients);
+    disp(lme_condition.Coefficients);
 
 end
 
-%% Finish
-fprintf('\n\n=============================================\n');
+fprintf('\n');
+fprintf('=============================================\n');
 fprintf('HABITUATION ANALYSIS COMPLETE\n');
 fprintf('=============================================\n');
 
@@ -174,5 +217,5 @@ fprintf('Dataset: trial-level BEFORE averaging\n');
 fprintf('Trials: %d\n', nTrials);
 fprintf('Conditions: Low / High\n');
 fprintf('ROI: Fz + Cz + Pz\n');
-fprintf('Windows: 100-200, 200-350, 350-600 ms\n');
-fprintf('Analysis: ROI-level only\n');
+fprintf('Time windows: 100-200, 200-350, 350-600 ms\n');
+fprintf('Analysis: ALL repetitions\n');
