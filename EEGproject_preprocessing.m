@@ -217,7 +217,7 @@ D = spm_eeg_prep(S);
 S = []; 
 S.D = D; 
 S.band = 'high'; 
-S.freq = 0.1; 
+S.freq = 0.01; 
 D = spm_eeg_filter(S); 
 
 %display_SPM_data(D)
