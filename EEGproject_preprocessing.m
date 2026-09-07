@@ -92,7 +92,6 @@ function D2 = spm_interpolate_bad_channels(D)
     %check that dimension match
     if numel(indchantype(D, 'EEG')) == numel(data_corr.label)
         D2(indchantype(D,'EEG'),:) = data_corr.trial{1,1};
-        D2 = D.copy(['interpolate_' fname(D)]);
         D2.save();
     else
         error('something went wrong with channel indices')
@@ -112,15 +111,7 @@ function [new_trl, new_conditionlabels] = classify_roving_trials(trl, conditionl
 %   - deviant_low
 %   - deviant_high
 %
-% Only the LAST standard before each intensity change is kept.
-%
-% INPUTS
-%   trl               Trial matrix returned by spm_eeg_definetrial
-%   conditionlabels   Cell array returned by spm_eeg_definetrial
-%
-% OUTPUTS
-%   new_trl
-%   new_conditionlabels
+% All trials are kept.
 
 % Convert condition labels to numeric values
 values = zeros(length(conditionlabels),1);
@@ -128,47 +119,30 @@ values = zeros(length(conditionlabels),1);
 values(strcmp(conditionlabels,'low_intensity'))  = 1;
 values(strcmp(conditionlabels,'high_intensity')) = 2;
 
-% Find deviants and last standards
+% Keep all trials
 n = length(values);
-
-isDeviant = false(n,1);
-isLastStandard = false(n,1);
-
-% Deviant = first trial after a change
-isDeviant(2:end) = diff(values) ~= 0;
-
-% Last standard = trial immediately before a change
-isLastStandard(1:end-1) = diff(values) ~= 0;
-
-% Keep only deviants and last standards
-keep = isDeviant | isLastStandard;
-
-new_trl = trl(keep,:);
+new_trl = trl;
 
 % Create new condition labels
-new_conditionlabels = cell(sum(keep),1);
-
-k = 1;
+new_conditionlabels = cell(n,1);
 
 for i = 1:n
 
-    if isDeviant(i)
+    if i > 1 && values(i) ~= values(i-1)
 
         if values(i)==1
-            new_conditionlabels{k} = 'deviant_low';
+            new_conditionlabels{i} = 'deviant_low';
         else
-            new_conditionlabels{k} = 'deviant_high';
+            new_conditionlabels{i} = 'deviant_high';
         end
-        k = k + 1;
 
-    elseif isLastStandard(i)
+    else
 
         if values(i)==1
-            new_conditionlabels{k} = 'standard_low';
+            new_conditionlabels{i} = 'standard_low';
         else
-            new_conditionlabels{k} = 'standard_high';
+            new_conditionlabels{i} = 'standard_high';
         end
-        k = k + 1;
 
     end
 
@@ -181,13 +155,13 @@ end
 
 %convert
 S = []; 
-S.dataset = fullfile(project_root, '01EEG', 'raw', 'SPNCartoons_ID04.bdf');
+S.dataset = fullfile(project_root, '01EEG', 'SPNCartoons_ID04.bdf');
 D = spm_eeg_convert(S);
 
 %display_SPM_data(D)
 
 % select channels (added now for completeness)
-load(fullfile(project_root, '01EEG', 'spm', 'channelselection.mat'));
+load(fullfile(project_root, 'channelselection.mat'));
 S = []; 
 S.D = D; 
 S.channels = label;
@@ -217,7 +191,7 @@ D = spm_eeg_prep(S);
 S = []; 
 S.D = D; 
 S.band = 'high'; 
-S.freq = 0.1; 
+S.freq = 0.01; 
 D = spm_eeg_filter(S); 
 
 %display_SPM_data(D)
@@ -242,7 +216,7 @@ D = spm_interpolate_bad_channels(D);
 
 %% Prepare, montage / re-referencing
 
-load(fullfile(project_root, '01EEG', 'spm', 'avref_eog.mat'));
+load(fullfile(project_root, 'avref_eog.mat'));
 S = []; 
 S.D = D; 
 S.montage = montage; 
@@ -384,4 +358,4 @@ D = spm_eeg_bc(S);
 %average!
 S = []; 
 S.D = D; 
-D = spm_eeg_average(S); 
+D = spm_eeg_average(S);
