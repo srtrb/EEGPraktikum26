@@ -1,40 +1,53 @@
-%% HABITUATION ANALYSIS
-% Trial-level, before averaging
-% ROI: Fz + Cz + Pz
+%% HISTORY / TRANSITION EFFECT ANALYSIS
+% SPNCartoons_ID04
+%
+% Main questions:
+%
+% 1. Does the length of the previous Low block affect
+%    the ERP amplitude of the first High stimulus?
+%
+% 2. Does the length of the previous High block affect
+%    the ERP amplitude of the first Low stimulus?
+%
+% Only the FIRST stimulus after an intensity transition is analysed.
+%
+% ROI: Fz + FCz + Cz + C3 + C4
+% ERP window: 0-150 ms
 
-clearvars -except D
-clc
+clearvars;
+clc;
 
-%% ---------------------------------------------------------
-% DATASET
-%% ---------------------------------------------------------
+%% DATASET
 
-D = spm_eeg_load('barovingcorr2fMinterpolate_dfcspmeeg_SPNCartoons_ID04.mat');
+D = spm_eeg_load( ...
+    'barovingcorr2fMinterpolate_dfcspmeeg_SPNCartoons_ID04.mat');
 
 nTrials = D.ntrials;
 
 fprintf('Number of trials: %d\n\n', nTrials);
 
-%% ---------------------------------------------------------
-% ELECTRODES
-%% ---------------------------------------------------------
+%% ELECTRODES
 
-roi_labels = {'Fz','Cz','Pz'};
-roi_channels = zeros(1,3);
+roi_labels = {'Fz','FCz','Cz','C3','C4'};
 
-for i = 1:3
+roi_channels = zeros(1, numel(roi_labels));
+
+for i = 1:numel(roi_labels)
+
     roi_channels(i) = D.indchannel(roi_labels{i});
+
 end
 
-fprintf('ROI: Fz + Cz + Pz\n');
-for i = 1:3
+fprintf('ROI: Fz + FCz + Cz + C3 + C4\n');
+
+for i = 1:numel(roi_labels)
+
     fprintf('  %s -> channel %d\n', ...
         roi_labels{i}, roi_channels(i));
+
 end
 
-%% ---------------------------------------------------------
-% CONDITIONS -> LOW / HIGH
-%% ---------------------------------------------------------
+%% CONDITIONS -> LOW / HIGH
 
 conditions = D.conditions;
 
@@ -45,177 +58,281 @@ for t = 1:nTrials
     cond = lower(string(conditions{t}));
 
     if contains(cond,'low')
+
         Condition(t) = "Low";
+
     elseif contains(cond,'high')
+
         Condition(t) = "High";
+
     else
+
         Condition(t) = missing;
+
     end
+
 end
 
-%% ---------------------------------------------------------
-% REPETITION POSITION
-% Number of consecutive previous trials with same condition
-%% ---------------------------------------------------------
+%% IDENTIFY TRANSITIONS AND PREVIOUS BLOCK LENGTH
 
-Repeat = nan(nTrials,1);
+PrevCondition = strings(nTrials,1);
 
-current_repeat = 0;
-previous_condition = "";
+PreviousCount = nan(nTrials,1);
+
+IsTransition = false(nTrials,1);
+
+current_condition = "";
+current_run_length = 0;
 
 for t = 1:nTrials
 
     if ismissing(Condition(t))
-        current_repeat = 0;
-        previous_condition = "";
-        continue
+
+        current_condition = "";
+        current_run_length = 0;
+
+        continue;
+
     end
 
-    if Condition(t) == previous_condition
-        current_repeat = current_repeat + 1;
+    % First valid trial
+    if current_condition == ""
+
+        current_condition = Condition(t);
+        current_run_length = 1;
+
     else
-        current_repeat = 1;
-    end
 
-    Repeat(t) = current_repeat;
+        % Same intensity as previous trial
+        if Condition(t) == current_condition
 
-    previous_condition = Condition(t);
-end
+            current_run_length = current_run_length + 1;
 
-%% ---------------------------------------------------------
-% TIME WINDOWS
-%% ---------------------------------------------------------
+        % Intensity changed
+        else
 
-windows = {
-    'Early',       [100 200];
-    'Attentional', [200 350];
-    'P300',        [350 600]
-};
+            % Current trial is the first trial of the new block
+            PrevCondition(t) = current_condition;
 
-%% ---------------------------------------------------------
-% ANALYSIS
-%% ---------------------------------------------------------
+            PreviousCount(t) = current_run_length;
 
-for w = 1:size(windows,1)
+            IsTransition(t) = true;
 
-    win_name = windows{w,1};
-    timewin  = windows{w,2};
+            % Start counting the new block
+            current_condition = Condition(t);
+            current_run_length = 1;
 
-    fprintf('\n');
-    fprintf('=============================================\n');
-    fprintf('%s: %d-%d ms\n', ...
-        win_name, timewin(1), timewin(2));
-    fprintf('=============================================\n');
-
-    % Find samples using D.time
-    time_idx = find(D.time >= timewin(1)/1000 & ...
-                    D.time <= timewin(2)/1000);
-
-    if isempty(time_idx)
-        fprintf('No samples found for this window.\n');
-        continue
-    end
-
-    %% -----------------------------------------------------
-    % Extract amplitude
-    %% -----------------------------------------------------
-
-    Y = nan(nTrials,1);
-
-    for t = 1:nTrials
-
-        if ismissing(Condition(t))
-            continue
         end
 
-        % ROI x time
-        x = D(roi_channels,time_idx,t);
-
-        % Mean across electrodes and time
-        Y(t) = mean(x(:),'omitnan');
     end
-
-    %% -----------------------------------------------------
-    % LOW
-    %% -----------------------------------------------------
-
-    idx = Condition == "Low" & ~isnan(Y) & ~isnan(Repeat);
-
-    T_low = table( ...
-        Y(idx), ...
-        Repeat(idx), ...
-        'VariableNames', {'Amplitude','Repeat'});
-
-    fprintf('\n>>> LOW habituation\n\n');
-
-    if numel(unique(T_low.Repeat)) < 2
-
-        fprintf('Not enough repetition variation.\n');
-
-    else
-
-        lme_low = fitlme( ...
-            T_low, ...
-            'Amplitude ~ Repeat');
-
-        disp(lme_low.Coefficients);
-    end
-
-    %% -----------------------------------------------------
-    % HIGH
-    %% -----------------------------------------------------
-
-    idx = Condition == "High" & ~isnan(Y) & ~isnan(Repeat);
-
-    T_high = table( ...
-        Y(idx), ...
-        Repeat(idx), ...
-        'VariableNames', {'Amplitude','Repeat'});
-
-    fprintf('\n>>> HIGH habituation\n\n');
-
-    if numel(unique(T_high.Repeat)) < 2
-
-        fprintf('Not enough repetition variation.\n');
-
-    else
-
-        lme_high = fitlme( ...
-            T_high, ...
-            'Amplitude ~ Repeat');
-
-        disp(lme_high.Coefficients);
-    end
-
-    %% -----------------------------------------------------
-    % LOW vs HIGH
-    %% -----------------------------------------------------
-
-    idx = ~isnan(Y) & ~ismissing(Condition);
-
-    T = table( ...
-        Y(idx), ...
-        categorical(Condition(idx)), ...
-        'VariableNames', {'Amplitude','Condition'});
-
-    fprintf('\n>>> LOW vs HIGH comparison\n\n');
-
-    lme_condition = fitlme( ...
-        T, ...
-        'Amplitude ~ Condition');
-
-    disp(lme_condition.Coefficients);
 
 end
+
+%% TRANSITION SUMMARY
 
 fprintf('\n');
 fprintf('=============================================\n');
-fprintf('HABITUATION ANALYSIS COMPLETE\n');
+fprintf('TRANSITION SUMMARY\n');
 fprintf('=============================================\n');
 
-fprintf('Dataset: trial-level BEFORE averaging\n');
-fprintf('Trials: %d\n', nTrials);
-fprintf('Conditions: Low / High\n');
-fprintf('ROI: Fz + Cz + Pz\n');
-fprintf('Time windows: 100-200, 200-350, 350-600 ms\n');
-fprintf('Analysis: ALL repetitions\n');
+idx_LowHigh = IsTransition & ...
+              PrevCondition == "Low" & ...
+              Condition == "High";
+
+idx_HighLow = IsTransition & ...
+              PrevCondition == "High" & ...
+              Condition == "Low";
+
+fprintf('Low -> High transitions: %d\n', ...
+    sum(idx_LowHigh));
+
+fprintf('High -> Low transitions: %d\n', ...
+    sum(idx_HighLow));
+
+%% ERP DATA
+
+time = D.time;
+
+time_ms = time * 1000;
+
+% Select ROI channels
+X = D(roi_channels,:,:);
+
+% Average across ROI channels
+X = squeeze(mean(X,1));
+
+% X = time x trials
+
+fprintf('\nERP time range: %.0f to %.0f ms\n', ...
+    time_ms(1), time_ms(end));
+
+%% ERP WINDOW
+
+idx_window = time_ms >= 0 & time_ms <= 150;
+
+fprintf('ERP analysis window: 0 to 150 ms\n');
+
+%% =========================================================
+% LOW -> HIGH
+% ==========================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf('LOW -> HIGH\n');
+fprintf('=============================================\n');
+
+% First High trial after a Low block
+idx = idx_LowHigh;
+
+Count_LH = PreviousCount(idx);
+
+% ERP amplitude of each individual transition trial
+ERP_LH = zeros(sum(idx),1);
+
+trial_indices_LH = find(idx);
+
+for i = 1:length(trial_indices_LH)
+
+    trial = trial_indices_LH(i);
+
+    ERP_LH(i) = mean(X(idx_window,trial));
+
+end
+
+% Remove groups with fewer than 3 trials
+unique_counts_LH = unique(Count_LH);
+
+valid_counts_LH = [];
+
+for c = 1:length(unique_counts_LH)
+
+    n = sum(Count_LH == unique_counts_LH(c));
+
+    if n >= 3
+        valid_counts_LH(end+1) = unique_counts_LH(c);
+    end
+
+end
+
+keep_LH = ismember(Count_LH, valid_counts_LH);
+
+Count_LH = Count_LH(keep_LH);
+ERP_LH = ERP_LH(keep_LH);
+
+%% TABLE: LOW -> HIGH
+
+T_LH = table( ...
+    Count_LH, ...
+    ERP_LH, ...
+    'VariableNames', ...
+    {'PreviousCount','ERP_Amplitude'});
+
+disp(T_LH);
+
+%% REGRESSION: LOW -> HIGH
+
+mdl_LH = fitlm(Count_LH, ERP_LH);
+
+fprintf('\nRegression: Low -> High\n');
+
+disp(mdl_LH);
+
+fprintf('\nRegression coefficients:\n');
+
+disp(mdl_LH.Coefficients);
+
+%% =========================================================
+% HIGH -> LOW
+% ==========================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf('HIGH -> LOW\n');
+fprintf('=============================================\n');
+
+% First Low trial after a High block
+idx = idx_HighLow;
+
+Count_HL = PreviousCount(idx);
+
+% ERP amplitude of each individual transition trial
+ERP_HL = zeros(sum(idx),1);
+
+trial_indices_HL = find(idx);
+
+for i = 1:length(trial_indices_HL)
+
+    trial = trial_indices_HL(i);
+
+    ERP_HL(i) = mean(X(idx_window,trial));
+
+end
+
+% Remove groups with fewer than 3 trials
+unique_counts_HL = unique(Count_HL);
+
+valid_counts_HL = [];
+
+for c = 1:length(unique_counts_HL)
+
+    n = sum(Count_HL == unique_counts_HL(c));
+
+    if n >= 3
+        valid_counts_HL(end+1) = unique_counts_HL(c);
+    end
+
+end
+
+keep_HL = ismember(Count_HL, valid_counts_HL);
+
+Count_HL = Count_HL(keep_HL);
+ERP_HL = ERP_HL(keep_HL);
+
+%% TABLE: HIGH -> LOW
+
+T_HL = table( ...
+    Count_HL, ...
+    ERP_HL, ...
+    'VariableNames', ...
+    {'PreviousCount','ERP_Amplitude'});
+
+disp(T_HL);
+
+%% REGRESSION: HIGH -> LOW
+
+mdl_HL = fitlm(Count_HL, ERP_HL);
+
+fprintf('\nRegression: High -> Low\n');
+
+disp(mdl_HL);
+
+fprintf('\nRegression coefficients:\n');
+
+disp(mdl_HL.Coefficients);
+
+%% =========================================================
+% SUMMARY
+% ==========================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf('SUMMARY\n');
+fprintf('=============================================\n');
+
+Summary = table( ...
+    ["Low -> High"; "High -> Low"], ...
+    [mdl_LH.Coefficients.Estimate(2); ...
+     mdl_HL.Coefficients.Estimate(2)], ...
+    [mdl_LH.Coefficients.SE(2); ...
+     mdl_HL.Coefficients.SE(2)], ...
+    [mdl_LH.Coefficients.pValue(2); ...
+     mdl_HL.Coefficients.pValue(2)], ...
+    'VariableNames', ...
+    {'Transition','Beta','SE','pValue'});
+
+disp(Summary);
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf('ANALYSIS COMPLETE\n');
+fprintf('=============================================\n');
