@@ -340,7 +340,7 @@ end
 
 %convert
 S = []; 
-S.dataset = fullfile(project_root, '01EEG', 'SPNCartoons_ID04.bdf');
+S.dataset = fullfile(project_root, '01EEG', 'raw', 'SPNCartoons_ID04.bdf');
 D = spm_eeg_convert(S);
 
 %display_SPM_data(D)
