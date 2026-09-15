@@ -346,7 +346,7 @@ D = spm_eeg_convert(S);
 %display_SPM_data(D)
 
 % select channels (added now for completeness)
-load(fullfile(project_root, 'channelselection.mat'));
+load(fullfile(project_root, '01EEG', 'spm', 'channelselection.mat'));
 S = []; 
 S.D = D; 
 S.channels = label;
@@ -401,7 +401,7 @@ D = spm_interpolate_bad_channels(D);
 
 %% Prepare, montage / re-referencing
 
-load(fullfile(project_root, 'avref_eog.mat'));
+load(fullfile(project_root, '01EEG', 'spm', 'avref_eog.mat'));
 S = []; 
 S.D = D; 
 S.montage = montage; 
