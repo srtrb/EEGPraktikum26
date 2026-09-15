@@ -7,5 +7,21 @@ Enter the path to your project folder and your spm path into the EEGproject_prep
 project_root = ['C:\XXX'];
 spm_path = ['C:\XXX'];
 ```  
-Make sure your folder structure looks exactly like the one shown in the beginning of the EEGproject_preprocessing script.  
+Make sure your folder structure looks EXACTLY like this:
+```
+    data /
+        00Behavioural /
+            images
+            logs
+            neuronavigation /
+                Gian_ID04.sfp
+        01EEG /
+            raw /
+                SPNCartoons_ID04.bdf
+            spm /
+                channelselection.mat
+                avref_eog.mat
+                trialdef.mat
+        05Anat
+```
 Then you can run the script.
