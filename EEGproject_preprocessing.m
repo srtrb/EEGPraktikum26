@@ -430,7 +430,7 @@ S.D = D;
 S.mode = 'mark'; % Change 'Mode' to 'Mark'
 S.methods.fun = 'eyeblink'; % Detection algorithm
 S.methods.settings.threshold = 4;
-S.methods.channels = 'HEOG';
+S.methods.channels = 'VEOG';
 S.methods.settings.excwin = 0;
 D_ebf = spm_eeg_artefact(S);
 
@@ -443,7 +443,7 @@ S.D = D_ebf;
 S.timewin = [-500 500];
 S.trialdef(1).conditionlabel = 'Eyeblink'; 
 S.trialdef(1).eventtype = 'artefact_eyeblink';
-S.trialdef(1).eventvalue = 'HEOG';
+S.trialdef(1).eventvalue = 'VEOG';
 S.prefix = 'blink';
 D_blink_epochs = spm_eeg_epochs(S); 
 
