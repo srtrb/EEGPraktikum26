@@ -2,10 +2,8 @@
 % SPNCartoons_ID04
 %
 % Dataset: 4-condition averaged ERP
-% ROI: C2 + CP2 + CP4 + FC6
 % MMN: Deviant - Standard
-% Plot: 0-200 ms
-% Analysis window: 50-200 ms
+% Analysis window: 150-200 ms
 
 clearvars;
 clc;
@@ -21,8 +19,8 @@ D = spm_eeg_load( ...
 %% ------------------------------------------------------------------------
 % ROI
 % -------------------------------------------------------------------------
-roi_labels = {'C2','CP2','CP4','FC6'};
-% roi_labels = {'Fz','FCz','Cz'};
+% roi_labels = {'Fz','FCz','F1','F2'};
+roi_labels = {'T8','FT8','TP8'};
 
 roi_channels = zeros(1, numel(roi_labels));
 
@@ -88,7 +86,7 @@ disp(size(X));
 % AVERAGE ACROSS ROI CHANNELS
 % -------------------------------------------------------------------------
 
-% Average across C2, CP2, CP4 and FC6
+% Average across channels
 
 X_roi = mean(X,1);
 
@@ -200,6 +198,51 @@ fprintf('MMN     : %8.4f to %8.4f uV\n', ...
 
 
 %% ------------------------------------------------------------------------
+% AMPLITUDE ANALYSIS
+% -------------------------------------------------------------------------
+
+t1 = 150;
+t2 = 200;
+
+idx_analysis = ...
+    time_ms >= t1 & time_ms <= t2;
+
+standard_analysis = ...
+    mean(ERP_StandardOverall(idx_analysis));
+
+deviant_analysis = ...
+    mean(ERP_DeviantOverall(idx_analysis));
+
+mmn_analysis = ...
+    mean(MMN_Overall(idx_analysis));
+
+
+%% ------------------------------------------------------------------------
+% RESULTS
+% -------------------------------------------------------------------------
+
+fprintf('\n');
+fprintf('===============================================\n');
+fprintf('OVERALL MMN: 150-200 ms\n');
+fprintf('===============================================\n');
+
+fprintf('\nROI: %s\n', strjoin(roi_labels));
+
+fprintf('\nTime window: %g - %g ms\n', t1, t2);
+
+fprintf('\nStandard : %8.4f uV\n', ...
+    standard_analysis);
+
+fprintf('Deviant  : %8.4f uV\n', ...
+    deviant_analysis);
+
+fprintf('MMN      : %8.4f uV\n', ...
+    mmn_analysis);
+
+fprintf('\n===============================================\n');
+
+
+%% ------------------------------------------------------------------------
 % PLOT: STANDARD / DEVIANT / MMN
 % -------------------------------------------------------------------------
 
@@ -228,63 +271,20 @@ yline(0,'k--');
 grid on;
 box on;
 
-% Display only 0-200 ms
-xlim([0 200]);
+% Display only certain time window
+xlim([100 250]);
 
 % EEG convention
-set(gca,'YDir','reverse');
+set(gca,'YDir');
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
 
-title('Mismatch Negativity');
+title(sprintf('MMN - Channel(s) %s\nMean = %.2f \\muV (%d-%d ms)',...
+    strjoin(roi_labels, ','), mmn_analysis, t1, t2));
 
 legend({ ...
     'Standard', ...
     'Deviant', ...
     'MMN'}, ...
     'Location','best');
-
-
-%% ------------------------------------------------------------------------
-% 50-200 ms ANALYSIS
-% -------------------------------------------------------------------------
-
-idx_50_200 = ...
-    time_ms >= 50 & time_ms <= 200;
-
-standard_50_200 = ...
-    mean(ERP_StandardOverall(idx_50_200));
-
-deviant_50_200 = ...
-    mean(ERP_DeviantOverall(idx_50_200));
-
-mmn_50_200 = ...
-    mean(MMN_Overall(idx_50_200));
-
-
-%% ------------------------------------------------------------------------
-% RESULTS
-% -------------------------------------------------------------------------
-
-fprintf('\n');
-fprintf('===============================================\n');
-fprintf('OVERALL MMN: 50-200 ms\n');
-fprintf('===============================================\n');
-
-fprintf('\nROI:\n');
-fprintf('C2 + CP2 + CP4 + FC6\n');
-
-fprintf('\nTime window:\n');
-fprintf('50-200 ms\n');
-
-fprintf('\nStandard : %8.4f uV\n', ...
-    standard_50_200);
-
-fprintf('Deviant  : %8.4f uV\n', ...
-    deviant_50_200);
-
-fprintf('MMN      : %8.4f uV\n', ...
-    mmn_50_200);
-
-fprintf('\n===============================================\n');
